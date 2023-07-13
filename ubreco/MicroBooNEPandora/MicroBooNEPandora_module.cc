@@ -110,6 +110,7 @@ private:
 
     bool            m_processExistingSlices;            ///< Whether to run in slice mode, running a Pandora reconstruction pass for each slice
     std::string     m_sliceModuleLabel;                 ///< The slice module label, only used when running in slice mode
+    std::string     m_sliceInstanceLabel;
 
     bool            m_reprocessForExternalVertex;  ///< whether to run reprocessing of slices where there's an external vertex
     art::InputTag   m_externalVertexModuleLabel; ///< vertex module label for using an external vertex input
@@ -156,6 +157,7 @@ MicroBooNEPandora::MicroBooNEPandora(fhicl::ParameterSet const &pset) :
     m_candidateVertexParticlesListName(pset.get<std::string>("CandidateVertexParticlesListName","CandidateVertexParticles3D")),
     m_processExistingSlices(pset.get<bool>("ProcessExistingSlices", false)),
     m_sliceModuleLabel(pset.get<std::string>("SliceModuleLabel","")),
+    m_sliceInstanceLabel(pset.get<std::string>("SliceInstanceLabel","")),
     m_reprocessForExternalVertex(pset.get<bool>("ReprocessForExternalVertex",false)),
     m_externalVertexModuleLabel(pset.get<art::InputTag>("ExternalVertexModuleLabel",""))
 {
@@ -233,6 +235,7 @@ void MicroBooNEPandora::AccessAndPersistAllCandidateVertices(art::Event &evt) co
     {
         for (unsigned int sliceIndex = 0; sliceIndex < slicePfos.size(); ++sliceIndex)
         {
+            std::cout << "in slices" << std::endl;
             const pandora::PfoList *pVertexPfoList(nullptr);
             if (pandora::STATUS_CODE_SUCCESS != PandoraApi::GetPfoList(*pSliceNuWorker, m_candidateVertexParticlesListName + std::to_string(sliceIndex), pVertexPfoList))
                 continue;
@@ -274,7 +277,7 @@ void MicroBooNEPandora::CollectHitsBySlice(const art::Event &evt, SliceVector &s
 
     // Collect hits by slice
     art::Handle< std::vector<recob::Slice> > theSlices;
-    evt.getByLabel(m_sliceModuleLabel, theSlices);
+    evt.getByLabel(m_sliceModuleLabel, m_sliceInstanceLabel, theSlices);
 
     if (!theSlices.isValid())
     {
@@ -286,17 +289,27 @@ void MicroBooNEPandora::CollectHitsBySlice(const art::Event &evt, SliceVector &s
         mf::LogDebug("MicroBooNEPandora") << "  Found: " << theSlices->size() << " slices " << std::endl;
     }
 
-    art::FindManyP<recob::Hit> theHitAssns(theSlices, evt, m_sliceModuleLabel);
+    std::cout << "  Found: " << theSlices->size() << " slices " << std::endl;
+
+    art::FindManyP<recob::Hit> theHitAssns(theSlices, evt, m_externalVertexModuleLabel);
     for (unsigned int i = 0; i < theSlices->size(); ++i)
     {
+        bool hitsFound = false;
         const art::Ptr<recob::Slice> pSlice(theSlices, i);
-        sliceVector.push_back(pSlice);
 
         const std::vector< art::Ptr<recob::Hit> > hits = theHitAssns.at(i);
         for (unsigned int j=0; j<hits.size(); ++j)
         {
+            hitsFound = true;
+
             const art::Ptr<recob::Hit> hit = hits.at(j);
             slicesToHits[pSlice].push_back(hit);
+        }
+
+        if (hitsFound)
+        {
+            sliceVector.push_back(pSlice);
+            std::cout << "slicesToHits[pSlice].size(): " << slicesToHits[pSlice].size() << std::endl;
         }
     }
 }
